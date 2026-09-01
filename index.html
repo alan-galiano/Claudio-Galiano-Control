@@ -731,6 +731,7 @@ function vCliente(){
     <div id="tr"></div>
   </div>`);
   d.querySelector('#addveh').onclick=()=>openNuevoVehiculo(c.id);
+  d.querySelector('.detail-head').appendChild(accionesDetalle(()=>editCliente(c.id),()=>borrarCliente(c.id)));
   const vEl=d.querySelector('#veh');
   c.veh.map(vehOf).forEach(v=>vEl.appendChild(vehiculoCard(v)));
   const tEl=d.querySelector('#tr');
@@ -778,7 +779,7 @@ function vVehiculo(){
     <div class="sect-title"><span class="bar"></span>Historial de trabajos</div>
     <div id="h"></div>
   </div>`);
-  d.querySelector('.kv:last-child').style.cursor='pointer';
+  d.querySelector('.detail-head').appendChild(accionesDetalle(()=>editVehiculo(v.id),()=>borrarVehiculo(v.id)));
   const h=d.querySelector('#h');
   if(tr.length===0){h.appendChild(el('<div class="card" style="color:var(--txt-3);text-align:center;font-size:13px">Sin trabajos registrados todavía.</div>'));}
   tr.forEach(t=>h.appendChild(trabajoLi(t)));
@@ -878,6 +879,14 @@ function vTrabajo(){
   if(t.veh)d.querySelector('#vcard').onclick=()=>go('vehiculo',v.id);
   d.querySelector('#pdf-dl').onclick=()=>generarPDF(t,false);
   d.querySelector('#pdf-share').onclick=()=>generarPDF(t,true);
+  // cambiar estado
+  const estWrap=el('<div class="card" style="margin-top:12px"><div class="k" style="font-family:\'Rajdhani\';font-weight:600;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--txt-3);margin-bottom:8px">Estado del trabajo</div></div>');
+  const sel=el('<select class="est-sel" style="width:100%;background:var(--surface-2);border:1px solid var(--line-2);border-radius:12px;padding:12px 14px;color:var(--txt);font-family:Montserrat;font-size:15px"></select>');
+  FLUJO.forEach(e=>{const o=document.createElement('option');o.value=e;o.textContent=e;if(e===t.estado)o.selected=true;sel.appendChild(o);});
+  sel.onchange=()=>cambiarEstado(t.id,sel.value);
+  estWrap.appendChild(sel); d.appendChild(estWrap);
+  // editar / borrar
+  d.appendChild(accionesDetalle(()=>openNuevoPresupuesto(t),()=>borrarTrabajo(t.id)));
   return d;
 }
 
@@ -924,11 +933,13 @@ function vCaja(){
     cont.innerHTML='';
     MOVS.filter(m=>f==='todos'||m.t===f).forEach(m=>{
       const tag=m.seg?' <span class="est-cobro ec-cobr" style="font-size:8px;padding:2px 5px">Seguro pagó</span>':'';
-      cont.appendChild(el(`<div class="mov">
+      const rowmov=el(`<div class="mov tap" style="cursor:pointer">
         <div class="mic ${m.t==='in'?'in':'out'}">${m.t==='in'?'+':'–'}</div>
         <div class="mm"><div class="mt">${m.c}${tag}</div><div class="md">${m.f}/2026 · ${m.d}</div></div>
         <div class="amt" style="color:${m.t==='in'?'var(--green)':'var(--red)'}">${m.t==='in'?'+':'–'}${money(m.m)}</div>
-      </div>`));
+      </div>`);
+      rowmov.onclick=()=>openEditMov(m.id);
+      cont.appendChild(rowmov);
     });
   };
   paint('todos');
@@ -990,11 +1001,13 @@ function vGastos(){
   const listaEl=d.querySelector('#lista');
   outMovs.forEach(m=>{
     const meta=catMeta(m.cat);
-    listaEl.appendChild(el(`<div class="gcat">
+    const grow=el(`<div class="gcat tap" style="cursor:pointer">
       <span class="gic" style="color:${meta.col}">${svg(IC[meta.ic])}</span>
       <div class="gmain"><div class="gtop"><span class="gname" style="font-weight:600">${m.c}</span>
       <span class="gamt" style="color:var(--red)">–${money(m.m)}</span></div>
-      <div style="font-size:11px;color:var(--txt-3);margin-top:2px">${m.f}/2026 · ${meta.n}</div></div></div>`));
+      <div style="font-size:11px;color:var(--txt-3);margin-top:2px">${m.f}/2026 · ${meta.n}</div></div></div>`);
+    grow.onclick=()=>openEditMov(m.id);
+    listaEl.appendChild(grow);
   });
   return d;
 }
@@ -1353,12 +1366,12 @@ function recalcTotal(st,totalEl){
   totalEl.textContent=money(tot);
 }
 function hoyDDMM(){const h=new Date();return String(h.getDate()).padStart(2,'0')+'/'+String(h.getMonth()+1).padStart(2,'0');}
-function openNuevoPresupuesto(){
-  const st={modo:'existente',tipo:'particular',color:COLORES[0],items:[{c:'',m:''},{c:'',m:''}]};
+function openNuevoPresupuesto(edit){
+  const st={modo:'existente',tipo:(edit?edit.tipo:'particular'),color:COLORES[0],items:(edit&&edit.items&&edit.items.length?edit.items.map(i=>({c:i.concepto,m:String(i.monto)})):[{c:'',m:''},{c:'',m:''}])};
   const m=openSheet(`
     <div class="sheet-grip"></div>
-    <h3>Nuevo presupuesto</h3>
-    <div class="sub">Cargá el detalle y después lo bajás en PDF.</div>
+    <h3>${edit?'Editar presupuesto':'Nuevo presupuesto'}</h3>
+    <div class="sub">${edit?'Modificá el detalle y guardá los cambios.':'Cargá el detalle y después lo bajás en PDF.'}</div>
 
     <div class="form-sect"><span class="bar"></span>Cliente</div>
     <div class="seg" id="p-modo">
@@ -1400,7 +1413,7 @@ function openNuevoPresupuesto(){
 
     <div class="form-actions">
       <button class="btn btn-ghost" id="p-cancel">Cancelar</button>
-      <button class="btn btn-primary" id="p-save">Crear presupuesto</button>
+      <button class="btn btn-primary" id="p-save">${edit?'Guardar cambios':'Crear presupuesto'}</button>
     </div>`);
 
   const itemsCont=m.querySelector('#p-items'), totalEl=m.querySelector('#p-total');
@@ -1423,27 +1436,159 @@ function openNuevoPresupuesto(){
   const franqInp=m.querySelector('#p-franq');
   franqInp.addEventListener('input',()=>{const r=franqInp.value.replace(/\D/g,'');franqInp.value=r?(+r).toLocaleString('es-AR'):'';});
 
+  if(edit){
+    m.querySelector('#p-modo').style.display='none';
+    m.querySelector('#p-existente').style.display='none';
+    m.querySelector('#p-nuevo').style.display='none';
+    const cli=trabCli(edit), veh=trabVeh(edit);
+    m.querySelector('#p-modo').insertAdjacentHTML('afterend','<div class="card" style="margin:0 0 4px"><div style="font-size:11px;color:var(--txt-3);text-transform:uppercase;letter-spacing:1px">Para</div><div style="font-weight:600;margin-top:3px">'+cli.nombre+' · '+((veh.marca||'')+' '+(veh.modelo||'')).trim()+'</div></div>');
+    m.querySelectorAll('#p-tipo button').forEach(b=>b.classList.toggle('on',b.dataset.t===edit.tipo));
+    m.querySelector('#p-seguro').style.display=edit.tipo==='seguro'?'block':'none';
+    if(edit.tipo==='seguro'){ m.querySelector('#p-aseg').value=edit.aseg||''; m.querySelector('#p-sin').value=(edit.sin&&edit.sin!=='—')?edit.sin:''; franqInp.value=edit.franq?(+edit.franq).toLocaleString('es-AR'):''; }
+    m.querySelector('#p-notas').value=edit.notas||'';
+  }
+
   m.querySelector('#p-cancel').onclick=closeSheet;
   m.querySelector('#p-save').onclick=async()=>{
     const items=st.items.filter(it=>it.c.trim()&&parseInt(it.m)>0).map(it=>({concepto:it.c.trim(),monto:parseInt(it.m)}));
     if(items.length===0){const f=itemsCont.querySelector('.ic-con');f.classList.add('bad');f.focus();return;}
     const total=items.reduce((a,b)=>a+b.monto,0);
-    const pay={tipo:st.tipo,estado:'Presupuesto',titulo:items[0].concepto,total,items,nro:nextPresuNro(),validez:15,fecha:hoyDDMM(),entrega:'—',notas:m.querySelector('#p-notas').value.trim()||null};
+    const pay={tipo:st.tipo,titulo:items[0].concepto,total,items,notas:m.querySelector('#p-notas').value.trim()||null};
     if(st.tipo==='seguro'){ pay.aseguradora=m.querySelector('#p-aseg').value.trim()||null; pay.siniestro=m.querySelector('#p-sin').value.trim()||null; pay.franquicia=parseInt(franqInp.value.replace(/\D/g,''))||0; }
+    else{ pay.aseguradora=null; pay.siniestro=null; pay.franquicia=0; }
+    const btn=m.querySelector('#p-save'); btn.disabled=true; btn.textContent='Guardando…';
+    if(edit){
+      try{ await dbUpd('trabajos',edit.id,pay); await recargar(); closeSheet(); go('trabajo',edit.id); }
+      catch(err){ btn.disabled=false; btn.textContent='Guardar cambios'; toast('No se pudo guardar: '+((err&&err.message)||err)); }
+      return;
+    }
+    pay.estado='Presupuesto'; pay.nro=nextPresuNro(); pay.validez=15; pay.fecha=hoyDDMM(); pay.entrega='—';
     if(st.modo==='existente'){ pay.vehiculo_id=m.querySelector('#p-veh').value; }
     else{
-      const nom=m.querySelector('#f-nombre'); if(!nom.value.trim()){nom.classList.add('bad');nom.focus();return;}
-      const v=readVeh(m,st,null); if(!v)return;
+      const nom=m.querySelector('#f-nombre'); if(!nom.value.trim()){nom.classList.add('bad');nom.focus();btn.disabled=false;btn.textContent='Crear presupuesto';return;}
+      const v=readVeh(m,st,null); if(!v){btn.disabled=false;btn.textContent='Crear presupuesto';return;}
       pay.cli_nombre=nom.value.trim(); pay.cli_tel=m.querySelector('#f-tel').value.trim()||null;
       pay.veh_info={marca:v.marca,modelo:v.modelo,anio:v.anio,pat:v.pat,fmt:v.fmt,color:v.color,hex:v.hex};
     }
-    const btn=m.querySelector('#p-save'); btn.disabled=true; btn.textContent='Guardando…';
     try{
       const {data:t,error}=await sb.from('trabajos').insert(pay).select().single();
       if(error)throw error;
       TRABAJOS.unshift({id:t.id,veh:t.vehiculo_id||undefined,cliNombre:t.cli_nombre||undefined,cliTel:t.cli_tel||undefined,vehInfo:t.veh_info||undefined,nro:t.nro,tipo:t.tipo,estado:t.estado,titulo:t.titulo,total:Number(t.total)||0,items:t.items||[],tareas:(t.items||[]).map(i=>i.concepto),notas:t.notas,validez:t.validez||15,ingreso:t.fecha,entrega:t.entrega||'—',aseg:t.aseguradora,sin:t.siniestro,franq:Number(t.franquicia)||0});
       closeSheet(); go('trabajo',t.id);
     }catch(err){ btn.disabled=false; btn.textContent='Crear presupuesto'; toast('No se pudo guardar: '+((err&&err.message)||err)); }
+  };
+}
+
+/* ============================ EDITAR / BORRAR ============================ */
+async function recargar(){ try{ await loadAll(); }catch(e){ toast('Error recargando: '+((e&&e.message)||e)); } }
+async function dbDel(tabla,id){ const {error}=await sb.from(tabla).delete().eq('id',id); if(error)throw error; }
+async function dbUpd(tabla,id,patch){ const {error}=await sb.from(tabla).update(patch).eq('id',id); if(error)throw error; }
+function confirmar(msg,onYes){
+  const ov=el(`<div class="modal-ov" id="confirm" style="align-items:center;padding:22px">
+    <div class="sheet" style="border-radius:20px;max-width:360px;padding:22px;text-align:center">
+      <div style="font-size:15px;color:var(--txt);line-height:1.5;margin-bottom:18px">${msg}</div>
+      <div class="form-actions" style="margin-top:0">
+        <button class="btn btn-ghost" id="cf-no">Cancelar</button>
+        <button class="btn btn-primary" id="cf-yes">Eliminar</button>
+      </div></div></div>`);
+  document.body.appendChild(ov);
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  ov.querySelector('#cf-no').onclick=()=>ov.remove();
+  ov.querySelector('#cf-yes').onclick=async()=>{ov.remove(); await onYes();};
+}
+function accionesDetalle(onEdit,onDel){
+  const row=el('<div class="pdf-actions" style="margin-top:12px"></div>');
+  const be=el('<button class="pdf-btn pdf-ghost">✎ Editar</button>');
+  const bd=el('<button class="pdf-btn pdf-ghost" style="color:var(--red);border-color:rgba(255,46,46,.35)">🗑 Eliminar</button>');
+  be.onclick=onEdit; bd.onclick=onDel; row.appendChild(be); row.appendChild(bd); return row;
+}
+
+/* ----- CLIENTE ----- */
+function editCliente(id){
+  const c=cliOf(id);
+  const m=openSheet(`
+    <div class="sheet-grip"></div>
+    <h3>Editar cliente</h3>
+    <div class="form-sect"><span class="bar"></span>Datos</div>
+    <div class="field"><label>Nombre y apellido</label><input id="e-nombre" autocomplete="off"></div>
+    <div class="field"><label>Teléfono</label><input id="e-tel" inputmode="tel" autocomplete="off"></div>
+    <div class="field"><label>Tipo</label><div class="seg" id="e-tipo"><button data-t="Particular">Particular</button><button data-t="Flota">Flota</button></div></div>
+    <div class="form-actions"><button class="btn btn-ghost" id="e-cancel">Cancelar</button><button class="btn btn-primary" id="e-save">Guardar</button></div>`);
+  m.querySelector('#e-nombre').value=c.nombre;
+  m.querySelector('#e-tel').value=(c.tel&&c.tel!=='—')?c.tel:'';
+  let tipo=c.tipo||'Particular';
+  const setTipo=()=>m.querySelectorAll('#e-tipo button').forEach(b=>b.classList.toggle('on',b.dataset.t===tipo));
+  setTipo(); m.querySelectorAll('#e-tipo button').forEach(b=>b.onclick=()=>{tipo=b.dataset.t;setTipo();});
+  m.querySelector('#e-cancel').onclick=closeSheet;
+  m.querySelector('#e-save').onclick=async()=>{
+    const nom=m.querySelector('#e-nombre').value.trim(); if(!nom){m.querySelector('#e-nombre').classList.add('bad');return;}
+    const btn=m.querySelector('#e-save'); btn.disabled=true; btn.textContent='Guardando…';
+    try{ await dbUpd('clientes',id,{nombre:nom,tel:m.querySelector('#e-tel').value.trim()||null,tipo}); await recargar(); closeSheet(); render(); }
+    catch(e){ btn.disabled=false; btn.textContent='Guardar'; toast('No se pudo guardar: '+((e&&e.message)||e)); }
+  };
+}
+function borrarCliente(id){ confirmar('¿Eliminar este cliente? Se borran también sus vehículos.', async()=>{
+  try{ await dbDel('clientes',id); await recargar(); tab('clientes'); }catch(e){ toast('No se pudo eliminar: '+((e&&e.message)||e)); }}); }
+
+/* ----- VEHÍCULO ----- */
+function editVehiculo(id){
+  const v=vehOf(id);
+  const st={color: COLORES.find(x=>x.n===v.color)||{n:(v.color||'—'),hex:(v.hex||'#888')}};
+  const m=openSheet(`
+    <div class="sheet-grip"></div>
+    <h3>Editar vehículo</h3>
+    <div class="form-sect"><span class="bar"></span>Datos del vehículo</div>
+    ${vehFields(st)}
+    <div class="form-actions"><button class="btn btn-ghost" id="e-cancel">Cancelar</button><button class="btn btn-primary" id="e-save">Guardar</button></div>`);
+  wireVehFields(m,st);
+  m.querySelector('#f-marca').value=v.marca||''; m.querySelector('#f-modelo').value=v.modelo||'';
+  m.querySelector('#f-anio').value=v.anio||''; m.querySelector('#f-pat').value=v.pat||'';
+  const idx=COLORES.findIndex(x=>x.n===v.color);
+  if(idx>=0){ m.querySelectorAll('#f-colores .sw').forEach(x=>x.classList.remove('on')); const sw=m.querySelector('#f-colores .sw[data-i="'+idx+'"]'); if(sw){sw.classList.add('on'); st.color=COLORES[idx]; m.querySelector('#f-colorname').textContent=st.color.n;} }
+  m.querySelector('#e-cancel').onclick=closeSheet;
+  m.querySelector('#e-save').onclick=async()=>{
+    const nv=readVeh(m,st,null); if(!nv)return;
+    const btn=m.querySelector('#e-save'); btn.disabled=true; btn.textContent='Guardando…';
+    try{ await dbUpd('vehiculos',id,{marca:nv.marca,modelo:nv.modelo,anio:nv.anio,patente:nv.pat,fmt:nv.fmt,color:nv.color,hex:nv.hex}); await recargar(); closeSheet(); render(); }
+    catch(e){ btn.disabled=false; btn.textContent='Guardar'; toast('No se pudo guardar: '+((e&&e.message)||e)); }
+  };
+}
+function borrarVehiculo(id){ confirmar('¿Eliminar este vehículo?', async()=>{
+  try{ await dbDel('vehiculos',id); await recargar(); back(); }catch(e){ toast('No se pudo eliminar: '+((e&&e.message)||e)); }}); }
+
+/* ----- TRABAJO ----- */
+function borrarTrabajo(id){ confirmar('¿Eliminar este presupuesto / trabajo?', async()=>{
+  try{ await dbDel('trabajos',id); await recargar(); tab('trabajos'); }catch(e){ toast('No se pudo eliminar: '+((e&&e.message)||e)); }}); }
+async function cambiarEstado(id,estado){
+  const t=TRABAJOS.find(x=>x.id===id); if(!t)return; const prev=t.estado; t.estado=estado; render();
+  try{ await dbUpd('trabajos',id,{estado}); }catch(e){ t.estado=prev; render(); toast('No se pudo cambiar el estado: '+((e&&e.message)||e)); }
+}
+
+/* ----- MOVIMIENTO (caja / gasto) ----- */
+function openEditMov(id){
+  const mv=MOVS.find(x=>x.id===id); if(!mv)return; const esOut=mv.t==='out'; const st={cat:mv.cat||'otros'};
+  const catUI = esOut ? `<div class="form-sect"><span class="bar"></span>Rubro</div>
+    <div class="catgrid" id="e-cats">${CATS.map(c=>`<button class="catbtn${c.k===st.cat?' on':''}" data-k="${c.k}"><span class="cbic" style="color:${c.col}">${svg(IC[c.ic])}</span><span class="cbn">${c.n}</span></button>`).join('')}</div>` : '';
+  const m=openSheet(`
+    <div class="sheet-grip"></div>
+    <h3>Editar ${esOut?'gasto':'ingreso'}</h3>
+    <div class="form-sect"><span class="bar"></span>Monto</div>
+    <div class="amount-field"><span class="cs">$</span><input id="e-monto" inputmode="numeric"></div>
+    <div class="field" style="margin-top:13px"><label>Concepto</label><input id="e-con" autocomplete="off"></div>
+    ${catUI}
+    <div class="form-actions"><button class="btn btn-ghost" id="e-del" style="color:var(--red);border-color:rgba(255,46,46,.4)">Eliminar</button><button class="btn btn-primary" id="e-save">Guardar</button></div>`);
+  const inp=m.querySelector('#e-monto'); inp.value=mv.m?(+mv.m).toLocaleString('es-AR'):'';
+  inp.addEventListener('input',()=>{const r=inp.value.replace(/\D/g,'');inp.value=r?(+r).toLocaleString('es-AR'):'';});
+  m.querySelector('#e-con').value=mv.c||'';
+  if(esOut){ m.querySelectorAll('#e-cats .catbtn').forEach(b=>b.onclick=()=>{m.querySelectorAll('#e-cats .catbtn').forEach(x=>x.classList.remove('on'));b.classList.add('on');st.cat=b.dataset.k;}); }
+  m.querySelector('#e-del').onclick=()=>{ closeSheet(); confirmar('¿Eliminar este movimiento?', async()=>{ try{ await dbDel('movimientos',id); await recargar(); render(); }catch(e){ toast('No se pudo eliminar: '+((e&&e.message)||e)); } }); };
+  m.querySelector('#e-save').onclick=async()=>{
+    const monto=parseInt(inp.value.replace(/\D/g,''))||0; if(monto<=0){inp.parentElement.style.borderColor='var(--red)';return;}
+    const con=m.querySelector('#e-con').value.trim()||(esOut?catMeta(st.cat).n:'Ingreso');
+    const patch={monto,concepto:con}; if(esOut){patch.categoria=st.cat; patch.detalle=catMeta(st.cat).n;}
+    const btn=m.querySelector('#e-save'); btn.disabled=true; btn.textContent='Guardando…';
+    try{ await dbUpd('movimientos',id,patch); await recargar(); closeSheet(); render(); }
+    catch(e){ btn.disabled=false; btn.textContent='Guardar'; toast('No se pudo guardar: '+((e&&e.message)||e)); }
   };
 }
 
