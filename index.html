@@ -409,6 +409,8 @@ const sb=window.supabase.createClient(SUPA_URL,SUPA_KEY);
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 function mesActual(){const h=new Date();return MESES[h.getMonth()]+' '+h.getFullYear();}
 
+function hoyFecha(){const h=new Date();return h.getFullYear()+'-'+String(h.getMonth()+1).padStart(2,'0')+'-'+String(h.getDate()).padStart(2,'0');}
+function mapTrabajo(t){return {id:t.id,veh:t.vehiculo_id||undefined,cliNombre:t.cli_nombre||undefined,cliTel:t.cli_tel||undefined,cliDir:t.cli_dir||undefined,vehInfo:t.veh_info||undefined,nro:t.nro,tipo:t.tipo||'particular',estado:t.estado||'Presupuesto',titulo:t.titulo,total:Number(t.total)||0,sena:Number(t.sena)||0,items:t.items||[],tareas:(t.items||[]).map(i=>i.concepto),detalleTxt:t.detalle_txt||'',repuestos:t.repuestos||'',formaPago:t.forma_pago||'',notas:t.notas,validez:t.validez||10,ingreso:t.fecha,fecha:t.fecha,entrega:t.entrega||'—',aseg:t.aseguradora,sin:t.siniestro,franq:Number(t.franquicia)||0};}
 async function loadAll(){
   const [rc,rv,rt,rm]=await Promise.all([
     sb.from('clientes').select('*').order('creado_en'),
@@ -418,8 +420,8 @@ async function loadAll(){
   ]);
   const err=rc.error||rv.error||rt.error||rm.error; if(err) throw err;
   VEHICULOS=(rv.data||[]).map(v=>({id:v.id,marca:v.marca,modelo:v.modelo,anio:v.anio,pat:v.patente,fmt:v.fmt||'m',color:v.color,hex:v.hex||'#888',due:v.cliente_id}));
-  CLIENTES=(rc.data||[]).map(c=>({id:c.id,nombre:c.nombre,tel:c.tel||'—',tipo:c.tipo||'Particular',desde:c.desde,veh:VEHICULOS.filter(v=>v.due===c.id).map(v=>v.id)}));
-  TRABAJOS=(rt.data||[]).map(t=>({id:t.id,veh:t.vehiculo_id||undefined,cliNombre:t.cli_nombre||undefined,cliTel:t.cli_tel||undefined,vehInfo:t.veh_info||undefined,nro:t.nro,tipo:t.tipo||'particular',estado:t.estado||'Presupuesto',titulo:t.titulo,total:Number(t.total)||0,sena:Number(t.sena)||0,items:t.items||[],tareas:(t.items||[]).map(i=>i.concepto),notas:t.notas,validez:t.validez||15,ingreso:t.fecha,entrega:t.entrega||'—',aseg:t.aseguradora,sin:t.siniestro,franq:Number(t.franquicia)||0}));
+  CLIENTES=(rc.data||[]).map(c=>({id:c.id,nombre:c.nombre,tel:c.tel||'—',tipo:c.tipo||'Particular',desde:c.desde,dir:c.dir||'',veh:VEHICULOS.filter(v=>v.due===c.id).map(v=>v.id)}));
+  TRABAJOS=(rt.data||[]).map(mapTrabajo);
   MOVS=(rm.data||[]).map(m=>({id:m.id,f:m.fecha,t:m.tipo,c:m.concepto,d:m.detalle,m:Number(m.monto)||0,cat:m.categoria,seg:m.es_seguro||false}));
 }
 
@@ -662,7 +664,7 @@ function vInicio(){
 }
 /* helpers que soportan trabajos con cliente/vehículo existente (por id) o cargado inline (presupuesto de paso) */
 function trabVeh(t){ if(t.veh)return vehOf(t.veh); return t.vehInfo||{marca:'',modelo:'',pat:'S/D',fmt:'m',color:'',hex:'#888'}; }
-function trabCli(t){ if(t.veh)return cliOf(vehOf(t.veh).due); return {nombre:t.cliNombre||'—',tel:t.cliTel||'—'}; }
+function trabCli(t){ if(t.veh){const c=cliOf(vehOf(t.veh).due)||{}; return {nombre:c.nombre||'—',tel:c.tel||'—',dir:c.dir||''};} return {nombre:t.cliNombre||'—',tel:t.cliTel||'—',dir:t.cliDir||''}; }
 function trabajoLi(t){
   const v=trabVeh(t), c=trabCli(t);
   const li=el(`<div class="li tap">
@@ -809,35 +811,11 @@ function vTrabajos(){
 function vTrabajo(){
   const t=TRABAJOS.find(x=>x.id===state.id);
   const v=trabVeh(t), c=trabCli(t);
-  const seguro=t.tipo==='seguro';
-  const esPresu=t.estado==='Presupuesto';
-  let pago;
-  if(seguro){
-    const fqStatus=t.franqCobrada?'<span style="color:var(--green)">✓ cobrada</span>':'pendiente';
-    pago=`<div class="split">
-      <div><div class="lab">Franquicia · cliente</div><div class="amt" style="color:var(--green)">${money(t.franq)}</div><div class="who">${fqStatus}</div></div>
-      <div class="cli"><div class="lab">Aseguradora</div><div class="amt" style="color:var(--amber);text-shadow:0 0 14px rgba(246,169,37,.4)">${money(t.total-t.franq)}</div><div class="who">por cobrar</div></div>
-    </div>
-    <div style="font-size:11px;color:var(--txt-3);margin-top:10px;line-height:1.5">
-      La parte de ${t.aseg} <b style="color:var(--txt-2)">no entra a caja</b> hasta que paguen. Se ve en <b style="color:var(--amber)">Seguros</b>.</div>`;
-  }else{
-    const saldo=t.total-(t.sena||0);
-    pago=`<div class="split">
-      <div><div class="lab">Seña / anticipo</div><div class="amt" style="color:var(--green)">${money(t.sena||0)}</div><div class="who">recibido</div></div>
-      <div class="cli"><div class="lab">Saldo</div><div class="amt">${money(saldo)}</div><div class="who">${saldo>0?'pendiente':'cancelado'}</div></div>
-    </div>`;
-  }
-  // detalle: ítems con monto (presupuesto nuevo) o tareas (trabajos viejos)
-  let detalle;
-  if(t.items&&t.items.length){
-    detalle=`<div class="card">${t.items.map(it=>`<div class="kv"><span class="k" style="text-transform:none;font-family:'Montserrat';font-weight:500;font-size:13px;color:var(--txt-2);letter-spacing:0">${it.concepto}</span><span class="v money" style="font-size:17px">${money(it.monto)}</span></div>`).join('')}</div>`;
-  }else{
-    detalle=`<div class="card"><ul class="tasks">${(t.tareas||[]).map(x=>`<li><span class="b">▪</span>${x}</li>`).join('')}</ul></div>`;
-  }
+  const detalleTxt=(t.detalleTxt||(t.tareas&&t.tareas.length?t.tareas.join('\n'):'')||'—');
   const d=el(`<div>
     <div class="detail-head">
       <div class="between"><div>${tipoBadge(t.tipo)}</div>${estBadge(t.estado)}</div>
-      <div style="font-family:'Bebas Neue';font-size:26px;line-height:1.05;margin:12px 0 4px">${t.titulo}</div>
+      <div style="font-family:'Bebas Neue';font-size:24px;line-height:1.1;margin:12px 0 4px">${t.titulo||'Presupuesto'}</div>
       ${stepsBar(t.estado)}
     </div>
 
@@ -849,33 +827,29 @@ function vTrabajo(){
     <div class="card tap" id="vcard" style="margin-top:12px">
       <div class="row" style="gap:13px">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:15px">${v.marca} ${v.modelo}</div>
-          <div style="font-size:12px;color:var(--txt-2);margin-top:3px">${c.nombre}</div>
+          <div style="font-weight:700;font-size:15px">${(v.marca||'')} ${(v.modelo||'')}</div>
+          <div style="font-size:12px;color:var(--txt-2);margin-top:3px">${c.nombre}${(c.tel&&c.tel!=='—')?' · '+c.tel:''}</div>
         </div>${v.pat?plate(v,true):''}</div>
     </div>
 
-    <div class="sect-title"><span class="bar"></span>${esPresu?'Ítems del presupuesto':'Detalle'}</div>
-    ${detalle}
+    <div class="sect-title"><span class="bar"></span>Detalle</div>
+    <div class="card"><div style="font-size:13.5px;color:var(--txt);line-height:1.6;white-space:pre-wrap">${detalleTxt}</div></div>
+
+    ${t.repuestos?`<div class="sect-title"><span class="bar"></span>Repuestos</div><div class="card"><div style="font-size:13.5px;color:var(--txt-2);line-height:1.6;white-space:pre-wrap">${t.repuestos}</div></div>`:''}
+    ${t.notas?`<div class="sect-title"><span class="bar"></span>Observación</div><div class="card"><div style="font-size:13.5px;color:var(--txt-2);line-height:1.6;white-space:pre-wrap">${t.notas}</div></div>`:''}
 
     <div class="sect-title"><span class="bar"></span>Total</div>
     <div class="card">
-      <div class="between"><span class="hero-lab" style="color:var(--txt-2)">${esPresu?'Presupuesto':'Total'} total</span>
-      <span class="money" style="font-size:26px">${money(t.total)}</span></div>
-      ${pago}
+      <div class="between"><span class="hero-lab" style="color:var(--txt-2)">Total</span><span class="money" style="font-size:26px">${money(t.total)}</span></div>
+      ${t.formaPago?`<div class="kv" style="margin-top:6px"><span class="k">Forma de pago</span><span class="v">${t.formaPago}</span></div>`:''}
+      ${t.tipo==='seguro'?`<div style="font-size:11px;color:var(--amber);margin-top:8px">Trabajo por seguro · figura en Seguros como por cobrar.</div>`:''}
     </div>
-
-    ${seguro?`<div class="card" style="margin-top:12px">
-      <div class="kv"><span class="k">Aseguradora</span><span class="v">${t.aseg}</span></div>
-      <div class="kv"><span class="k">N° de siniestro</span><span class="v">${t.sin||'—'}</span></div>
-    </div>`:''}
 
     <div class="card" style="margin-top:12px">
-      <div class="kv"><span class="k">${esPresu?'Fecha':'Ingreso al taller'}</span><span class="v">${t.ingreso}/2026</span></div>
-      ${esPresu?`<div class="kv"><span class="k">Validez</span><span class="v">${t.validez||15} días</span></div>`
-        :`<div class="kv"><span class="k">Entrega ${t.estado==='Entregado'?'':'estimada'}</span><span class="v" style="color:var(--red)">${t.entrega==='—'?'a confirmar':t.entrega+'/2026'}</span></div>`}
+      <div class="kv"><span class="k">Fecha</span><span class="v">${t.fecha||t.ingreso||'—'}</span></div>
+      <div class="kv"><span class="k">Validez</span><span class="v">${t.validez||10} días</span></div>
     </div>
-    ${t.notas?`<div class="card" style="margin-top:12px"><div class="k" style="font-family:'Rajdhani';font-weight:600;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--txt-3);margin-bottom:6px">Observaciones</div><div style="font-size:13px;color:var(--txt-2);line-height:1.5">${t.notas}</div></div>`:''}
-  </div>`);
+    </div>`);
   if(t.veh)d.querySelector('#vcard').onclick=()=>go('vehiculo',v.id);
   d.querySelector('#pdf-dl').onclick=()=>generarPDF(t,false);
   d.querySelector('#pdf-share').onclick=()=>generarPDF(t,true);
@@ -1279,6 +1253,7 @@ function openNuevoCliente(){
     <div class="form-sect"><span class="bar"></span>Datos del cliente</div>
     <div class="field"><label>Nombre y apellido</label><input id="f-nombre" placeholder="Juan Pérez" autocomplete="off"></div>
     <div class="field"><label>Teléfono</label><input id="f-tel" placeholder="351 6 123-4567" inputmode="tel" autocomplete="off"></div>
+    <div class="field"><label>Dirección (opcional)</label><input id="f-dir" autocomplete="off"></div>
     <div class="field"><label>Tipo</label>
       <div class="seg" id="f-tipo">
         <button class="on" data-t="Particular">Particular</button>
@@ -1302,12 +1277,12 @@ function openNuevoCliente(){
     const v=readVeh(m,st,null); if(!v)return;
     const btn=m.querySelector('#f-save'); btn.disabled=true; btn.textContent='Guardando…';
     try{
-      const {data:cli,error:e1}=await sb.from('clientes').insert({nombre:nom.value.trim(),tel:m.querySelector('#f-tel').value.trim()||null,tipo:st.tipo,desde:new Date().getFullYear()}).select().single();
+      const {data:cli,error:e1}=await sb.from('clientes').insert({nombre:nom.value.trim(),tel:m.querySelector('#f-tel').value.trim()||null,dir:m.querySelector('#f-dir').value.trim()||null,tipo:st.tipo,desde:new Date().getFullYear()}).select().single();
       if(e1)throw e1;
       const {data:veh,error:e2}=await sb.from('vehiculos').insert({cliente_id:cli.id,marca:v.marca,modelo:v.modelo,anio:v.anio,patente:v.pat,fmt:v.fmt,color:v.color,hex:v.hex}).select().single();
       if(e2)throw e2;
       VEHICULOS.push({id:veh.id,marca:veh.marca,modelo:veh.modelo,anio:veh.anio,pat:veh.patente,fmt:veh.fmt,color:veh.color,hex:veh.hex,due:cli.id});
-      CLIENTES.push({id:cli.id,nombre:cli.nombre,tel:cli.tel||'—',tipo:cli.tipo,desde:cli.desde,veh:[veh.id]});
+      CLIENTES.push({id:cli.id,nombre:cli.nombre,tel:cli.tel||'—',dir:cli.dir||'',tipo:cli.tipo,desde:cli.desde,veh:[veh.id]});
       closeSheet(); go('cliente',cli.id);
     }catch(err){ btn.disabled=false; btn.textContent='Guardar'; toast('No se pudo guardar: '+((err&&err.message)||err)); }
   };
@@ -1367,11 +1342,11 @@ function recalcTotal(st,totalEl){
 }
 function hoyDDMM(){const h=new Date();return String(h.getDate()).padStart(2,'0')+'/'+String(h.getMonth()+1).padStart(2,'0');}
 function openNuevoPresupuesto(edit){
-  const st={modo:'existente',tipo:(edit?edit.tipo:'particular'),color:COLORES[0],items:(edit&&edit.items&&edit.items.length?edit.items.map(i=>({c:i.concepto,m:String(i.monto)})):[{c:'',m:''},{c:'',m:''}])};
+  const st={modo:'existente'};
   const m=openSheet(`
     <div class="sheet-grip"></div>
     <h3>${edit?'Editar presupuesto':'Nuevo presupuesto'}</h3>
-    <div class="sub">${edit?'Modificá el detalle y guardá los cambios.':'Cargá el detalle y después lo bajás en PDF.'}</div>
+    <div class="sub">${edit?'Modificá y guardá los cambios.':'Cargá los datos y el detalle del trabajo.'}</div>
 
     <div class="form-sect"><span class="bar"></span>Cliente</div>
     <div class="seg" id="p-modo">
@@ -1379,62 +1354,45 @@ function openNuevoPresupuesto(edit){
       <button data-m="nuevo">Nuevo / de paso</button>
     </div>
     <div id="p-existente" style="margin-top:12px">
-      <div class="field"><label>Cliente</label>
-        <select id="p-cli">${CLIENTES.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
-      <div class="field"><label>Vehículo</label><select id="p-veh">${vehOptions(CLIENTES[0])}</select></div>
+      <div class="field"><label>Cliente</label><select id="p-cli">${CLIENTES.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
+      <div class="field"><label>Vehículo</label><select id="p-veh">${CLIENTES.length?vehOptions(CLIENTES[0]):''}</select></div>
     </div>
     <div id="p-nuevo" style="display:none;margin-top:12px">
-      <div class="field"><label>Nombre</label><input id="f-nombre" placeholder="Juan Pérez" autocomplete="off"></div>
-      <div class="field"><label>Teléfono</label><input id="f-tel" placeholder="351 6 123-4567" inputmode="tel" autocomplete="off"></div>
-      ${vehFields(st)}
-    </div>
-
-    <div class="form-sect"><span class="bar"></span>Tipo de trabajo</div>
-    <div class="seg" id="p-tipo">
-      <button class="on" data-t="particular">Particular</button>
-      <button data-t="seguro">Por seguro</button>
-    </div>
-    <div id="p-seguro" style="display:none;margin-top:12px">
+      <div class="field"><label>Nombre</label><input id="c-nom" autocomplete="off"></div>
+      <div class="field"><label>Dirección</label><input id="c-dir" autocomplete="off"></div>
+      <div class="field"><label>Teléfono</label><input id="c-tel" inputmode="tel" autocomplete="off"></div>
       <div class="row2">
-        <div class="field"><label>Aseguradora</label><input id="p-aseg" placeholder="La Segunda" autocomplete="off"></div>
-        <div class="field"><label>N° siniestro</label><input id="p-sin" placeholder="SN-2026-..." autocomplete="off"></div>
+        <div class="field"><label>Vehículo</label><input id="c-veh" placeholder="Ford F-100 Duty" autocomplete="off"></div>
+        <div class="field"><label>Patente</label><input id="c-pat" placeholder="GRQ 428" style="text-transform:uppercase" autocomplete="off"></div>
       </div>
-      <div class="field"><label>Franquicia (paga el cliente)</label>
-        <div class="amount-field"><span class="cs">$</span><input id="p-franq" inputmode="numeric" placeholder="0"></div></div>
     </div>
 
-    <div class="form-sect"><span class="bar"></span>Ítems</div>
-    <div id="p-items"></div>
-    <button class="add-item" id="p-additem">+ Agregar ítem</button>
-    <div class="total-live"><span class="tl-k">Total</span><span class="tl-v" id="p-total">$0</span></div>
+    <div class="form-sect"><span class="bar"></span>Trabajo a realizar</div>
+    <div class="field"><label>Detalle</label><textarea id="p-det" style="min-height:120px" placeholder="Escribí todo lo que hay que hacer..."></textarea></div>
+    <div class="field"><label>Observación</label><textarea id="p-obs" placeholder="Ej: óptica derecha a revisar"></textarea></div>
+    <div class="field"><label>Repuestos</label><textarea id="p-rep" placeholder="Ej: guardabarros delantero derecho"></textarea></div>
 
-    <div class="field" style="margin-top:16px"><label>Observaciones (opcional)</label>
-      <textarea id="p-notas" placeholder="Ej: No incluye repuestos de terceros. Sujeto a revisión del vehículo."></textarea></div>
+    <div class="form-sect"><span class="bar"></span>Importe</div>
+    <div class="field"><label>Forma de pago (opcional)</label><input id="p-fp" placeholder="Efectivo, transferencia..." autocomplete="off"></div>
+    <div class="field"><label>Total</label><div class="amount-field"><span class="cs">$</span><input id="p-total" inputmode="numeric" placeholder="0"></div></div>
+
+    <label style="display:flex;align-items:center;gap:9px;margin-top:12px;font-size:13px;color:var(--txt-2);cursor:pointer">
+      <input type="checkbox" id="p-seg" style="width:18px;height:18px;accent-color:var(--red)"> Es un trabajo por seguro
+    </label>
 
     <div class="form-actions">
       <button class="btn btn-ghost" id="p-cancel">Cancelar</button>
       <button class="btn btn-primary" id="p-save">${edit?'Guardar cambios':'Crear presupuesto'}</button>
     </div>`);
 
-  const itemsCont=m.querySelector('#p-items'), totalEl=m.querySelector('#p-total');
-  renderItems(itemsCont,st,totalEl);
-  m.querySelector('#p-additem').onclick=()=>{st.items.push({c:'',m:''});renderItems(itemsCont,st,totalEl);};
-
+  const totalInp=m.querySelector('#p-total');
+  totalInp.addEventListener('input',()=>{const r=totalInp.value.replace(/\D/g,'');totalInp.value=r?(+r).toLocaleString('es-AR'):'';});
   m.querySelectorAll('#p-modo button').forEach(b=>b.onclick=()=>{
-    m.querySelectorAll('#p-modo button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
-    st.modo=b.dataset.m;
+    m.querySelectorAll('#p-modo button').forEach(x=>x.classList.remove('on'));b.classList.add('on');st.modo=b.dataset.m;
     m.querySelector('#p-existente').style.display=st.modo==='existente'?'block':'none';
     m.querySelector('#p-nuevo').style.display=st.modo==='nuevo'?'block':'none';
-    if(st.modo==='nuevo')wireVehFields(m,st);
   });
-  m.querySelector('#p-cli').onchange=e=>{m.querySelector('#p-veh').innerHTML=vehOptions(cliOf(e.target.value));};
-  m.querySelectorAll('#p-tipo button').forEach(b=>b.onclick=()=>{
-    m.querySelectorAll('#p-tipo button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
-    st.tipo=b.dataset.t;
-    m.querySelector('#p-seguro').style.display=st.tipo==='seguro'?'block':'none';
-  });
-  const franqInp=m.querySelector('#p-franq');
-  franqInp.addEventListener('input',()=>{const r=franqInp.value.replace(/\D/g,'');franqInp.value=r?(+r).toLocaleString('es-AR'):'';});
+  if(m.querySelector('#p-cli')) m.querySelector('#p-cli').onchange=e=>{m.querySelector('#p-veh').innerHTML=vehOptions(cliOf(e.target.value));};
 
   if(edit){
     m.querySelector('#p-modo').style.display='none';
@@ -1442,38 +1400,43 @@ function openNuevoPresupuesto(edit){
     m.querySelector('#p-nuevo').style.display='none';
     const cli=trabCli(edit), veh=trabVeh(edit);
     m.querySelector('#p-modo').insertAdjacentHTML('afterend','<div class="card" style="margin:0 0 4px"><div style="font-size:11px;color:var(--txt-3);text-transform:uppercase;letter-spacing:1px">Para</div><div style="font-weight:600;margin-top:3px">'+cli.nombre+' · '+((veh.marca||'')+' '+(veh.modelo||'')).trim()+'</div></div>');
-    m.querySelectorAll('#p-tipo button').forEach(b=>b.classList.toggle('on',b.dataset.t===edit.tipo));
-    m.querySelector('#p-seguro').style.display=edit.tipo==='seguro'?'block':'none';
-    if(edit.tipo==='seguro'){ m.querySelector('#p-aseg').value=edit.aseg||''; m.querySelector('#p-sin').value=(edit.sin&&edit.sin!=='—')?edit.sin:''; franqInp.value=edit.franq?(+edit.franq).toLocaleString('es-AR'):''; }
-    m.querySelector('#p-notas').value=edit.notas||'';
+    m.querySelector('#p-det').value=edit.detalleTxt||(edit.tareas?edit.tareas.join('\n'):'')||'';
+    m.querySelector('#p-obs').value=edit.notas||'';
+    m.querySelector('#p-rep').value=edit.repuestos||'';
+    m.querySelector('#p-fp').value=edit.formaPago||'';
+    totalInp.value=edit.total?(+edit.total).toLocaleString('es-AR'):'';
+    m.querySelector('#p-seg').checked=edit.tipo==='seguro';
   }
 
   m.querySelector('#p-cancel').onclick=closeSheet;
   m.querySelector('#p-save').onclick=async()=>{
-    const items=st.items.filter(it=>it.c.trim()&&parseInt(it.m)>0).map(it=>({concepto:it.c.trim(),monto:parseInt(it.m)}));
-    if(items.length===0){const f=itemsCont.querySelector('.ic-con');f.classList.add('bad');f.focus();return;}
-    const total=items.reduce((a,b)=>a+b.monto,0);
-    const pay={tipo:st.tipo,titulo:items[0].concepto,total,items,notas:m.querySelector('#p-notas').value.trim()||null};
-    if(st.tipo==='seguro'){ pay.aseguradora=m.querySelector('#p-aseg').value.trim()||null; pay.siniestro=m.querySelector('#p-sin').value.trim()||null; pay.franquicia=parseInt(franqInp.value.replace(/\D/g,''))||0; }
-    else{ pay.aseguradora=null; pay.siniestro=null; pay.franquicia=0; }
+    const det=m.querySelector('#p-det').value.trim();
+    if(!det){const f=m.querySelector('#p-det');f.classList.add('bad');f.focus();return;}
+    const total=parseInt(totalInp.value.replace(/\D/g,''))||0;
+    const seguro=m.querySelector('#p-seg').checked;
+    const pay={tipo:seguro?'seguro':'particular',titulo:det.split('\n')[0].slice(0,60),total,
+      detalle_txt:det,notas:m.querySelector('#p-obs').value.trim()||null,repuestos:m.querySelector('#p-rep').value.trim()||null,
+      forma_pago:m.querySelector('#p-fp').value.trim()||null,items:[],franquicia:0,aseguradora:null,siniestro:null};
     const btn=m.querySelector('#p-save'); btn.disabled=true; btn.textContent='Guardando…';
     if(edit){
       try{ await dbUpd('trabajos',edit.id,pay); await recargar(); closeSheet(); go('trabajo',edit.id); }
       catch(err){ btn.disabled=false; btn.textContent='Guardar cambios'; toast('No se pudo guardar: '+((err&&err.message)||err)); }
       return;
     }
-    pay.estado='Presupuesto'; pay.nro=nextPresuNro(); pay.validez=15; pay.fecha=hoyDDMM(); pay.entrega='—';
-    if(st.modo==='existente'){ pay.vehiculo_id=m.querySelector('#p-veh').value; }
-    else{
-      const nom=m.querySelector('#f-nombre'); if(!nom.value.trim()){nom.classList.add('bad');nom.focus();btn.disabled=false;btn.textContent='Crear presupuesto';return;}
-      const v=readVeh(m,st,null); if(!v){btn.disabled=false;btn.textContent='Crear presupuesto';return;}
-      pay.cli_nombre=nom.value.trim(); pay.cli_tel=m.querySelector('#f-tel').value.trim()||null;
-      pay.veh_info={marca:v.marca,modelo:v.modelo,anio:v.anio,pat:v.pat,fmt:v.fmt,color:v.color,hex:v.hex};
+    pay.estado='Presupuesto'; pay.nro=nextPresuNro(); pay.validez=10; pay.fecha=hoyFecha(); pay.entrega='—';
+    if(st.modo==='existente'){
+      const vsel=m.querySelector('#p-veh'); if(!vsel||!vsel.value){ btn.disabled=false; btn.textContent='Crear presupuesto'; toast('Elegí un vehículo, o cargá el cliente como "Nuevo / de paso".'); return; }
+      pay.vehiculo_id=vsel.value;
+    }else{
+      const nom=m.querySelector('#c-nom').value.trim(); if(!nom){m.querySelector('#c-nom').classList.add('bad');btn.disabled=false;btn.textContent='Crear presupuesto';return;}
+      const pat=m.querySelector('#c-pat').value.trim().toUpperCase();
+      pay.cli_nombre=nom; pay.cli_tel=m.querySelector('#c-tel').value.trim()||null; pay.cli_dir=m.querySelector('#c-dir').value.trim()||null;
+      pay.veh_info={marca:m.querySelector('#c-veh').value.trim(),modelo:'',pat:pat||'S/D',fmt:detectFmt(pat),color:'',hex:'#888'};
     }
     try{
       const {data:t,error}=await sb.from('trabajos').insert(pay).select().single();
       if(error)throw error;
-      TRABAJOS.unshift({id:t.id,veh:t.vehiculo_id||undefined,cliNombre:t.cli_nombre||undefined,cliTel:t.cli_tel||undefined,vehInfo:t.veh_info||undefined,nro:t.nro,tipo:t.tipo,estado:t.estado,titulo:t.titulo,total:Number(t.total)||0,items:t.items||[],tareas:(t.items||[]).map(i=>i.concepto),notas:t.notas,validez:t.validez||15,ingreso:t.fecha,entrega:t.entrega||'—',aseg:t.aseguradora,sin:t.siniestro,franq:Number(t.franquicia)||0});
+      TRABAJOS.unshift(mapTrabajo(t));
       closeSheet(); go('trabajo',t.id);
     }catch(err){ btn.disabled=false; btn.textContent='Crear presupuesto'; toast('No se pudo guardar: '+((err&&err.message)||err)); }
   };
@@ -1512,10 +1475,12 @@ function editCliente(id){
     <div class="form-sect"><span class="bar"></span>Datos</div>
     <div class="field"><label>Nombre y apellido</label><input id="e-nombre" autocomplete="off"></div>
     <div class="field"><label>Teléfono</label><input id="e-tel" inputmode="tel" autocomplete="off"></div>
+    <div class="field"><label>Dirección</label><input id="e-dir" autocomplete="off"></div>
     <div class="field"><label>Tipo</label><div class="seg" id="e-tipo"><button data-t="Particular">Particular</button><button data-t="Flota">Flota</button></div></div>
     <div class="form-actions"><button class="btn btn-ghost" id="e-cancel">Cancelar</button><button class="btn btn-primary" id="e-save">Guardar</button></div>`);
   m.querySelector('#e-nombre').value=c.nombre;
   m.querySelector('#e-tel').value=(c.tel&&c.tel!=='—')?c.tel:'';
+  m.querySelector('#e-dir').value=c.dir||'';
   let tipo=c.tipo||'Particular';
   const setTipo=()=>m.querySelectorAll('#e-tipo button').forEach(b=>b.classList.toggle('on',b.dataset.t===tipo));
   setTipo(); m.querySelectorAll('#e-tipo button').forEach(b=>b.onclick=()=>{tipo=b.dataset.t;setTipo();});
@@ -1523,7 +1488,7 @@ function editCliente(id){
   m.querySelector('#e-save').onclick=async()=>{
     const nom=m.querySelector('#e-nombre').value.trim(); if(!nom){m.querySelector('#e-nombre').classList.add('bad');return;}
     const btn=m.querySelector('#e-save'); btn.disabled=true; btn.textContent='Guardando…';
-    try{ await dbUpd('clientes',id,{nombre:nom,tel:m.querySelector('#e-tel').value.trim()||null,tipo}); await recargar(); closeSheet(); render(); }
+    try{ await dbUpd('clientes',id,{nombre:nom,tel:m.querySelector('#e-tel').value.trim()||null,dir:m.querySelector('#e-dir').value.trim()||null,tipo}); await recargar(); closeSheet(); render(); }
     catch(e){ btn.disabled=false; btn.textContent='Guardar'; toast('No se pudo guardar: '+((e&&e.message)||e)); }
   };
 }
@@ -1593,83 +1558,63 @@ function openEditMov(id){
 }
 
 /* ============================ PDF DEL PRESUPUESTO ============================ */
-function plateHTMLlight(v){
-  const strip=(v.fmt==='old')?'':'<div style="background:#0b3aa0;color:#fff;font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:9px;letter-spacing:3px;text-align:center;padding:3px 0;line-height:1;white-space:nowrap">ARGENTINA</div>';
-  return '<div style="display:inline-block;background:#ffffff;border:2px solid #111;border-radius:6px;overflow:hidden">'
-    +strip
-    +'<div style="color:#111;font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:25px;letter-spacing:2px;text-align:center;padding:8px 18px 9px;line-height:1;white-space:nowrap">'+(v.pat||'S/D')+'</div></div>';
-}
+function plateHTMLlight(v){ return (v&&v.pat)?v.pat:'S/D'; }
 function buildPresupuestoNode(t){
   const v=trabVeh(t), c=trabCli(t);
-  const seguro=t.tipo==='seguro';
-  const nro=t.nro||('P-2026-'+String(40+parseInt(t.id.slice(1))).padStart(4,'0'));
-  const items=(t.items&&t.items.length)?t.items:(t.tareas||[]).map(x=>({concepto:x,monto:null}));
-  const RED='#D8261F', INK='#161616', MUT='#6E6E76', LINE='#E4E4E7';
-  const contacto=[TALLER.dir?('Dirección: '+TALLER.dir):'', TALLER.tel?('Tel / WhatsApp: '+TALLER.tel):'', TALLER.ig?('Instagram: '+TALLER.ig):'', TALLER.email?('Email: '+TALLER.email):'']
-    .filter(Boolean).map(s=>'<div style="font-size:10.5px;color:'+MUT+';line-height:1.6">'+s+'</div>').join('');
-  const rows=items.map(it=>'<tr>'
-    +'<td style="padding:12px 6px;border-bottom:1px solid '+LINE+';font-size:13px;color:'+INK+'">'+it.concepto+'</td>'
-    +'<td style="padding:12px 6px;border-bottom:1px solid '+LINE+';font-size:13.5px;color:'+INK+';text-align:right;white-space:nowrap;font-family:Rajdhani,Arial,sans-serif;font-weight:700">'+(it.monto!=null?money(it.monto):'')+'</td></tr>').join('');
-  let totalBlock;
-  if(seguro){
-    totalBlock=''
-      +'<tr><td style="padding:9px 6px;text-align:right;font-size:12.5px;color:'+MUT+'">Presupuesto total</td><td style="padding:9px 6px;text-align:right;font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:15px;white-space:nowrap">'+money(t.total)+'</td></tr>'
-      +'<tr><td style="padding:9px 6px;text-align:right;font-size:12.5px;color:'+MUT+'">A cargo de '+t.aseg+'</td><td style="padding:9px 6px;text-align:right;font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:15px;white-space:nowrap">'+money(t.total-(t.franq||0))+'</td></tr>'
-      +'<tr><td style="padding:13px 6px;text-align:right;border-top:2px solid '+INK+';font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;color:'+INK+'">Franquicia · paga el cliente</td><td style="padding:13px 6px;text-align:right;border-top:2px solid '+INK+';font-family:\'Bebas Neue\',Arial,sans-serif;font-size:30px;color:'+RED+';white-space:nowrap">'+money(t.franq||0)+'</td></tr>';
-  }else{
-    totalBlock='<tr><td style="padding:14px 6px;text-align:right;border-top:2px solid '+INK+';font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:15px;letter-spacing:2px;text-transform:uppercase;color:'+INK+'">Total</td><td style="padding:14px 6px;text-align:right;border-top:2px solid '+INK+';font-family:\'Bebas Neue\',Arial,sans-serif;font-size:34px;color:'+RED+';white-space:nowrap">'+money(t.total)+'</td></tr>';
-  }
-  const tipoChip=seguro
-    ? '<span style="display:inline-block;font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;padding:7px 13px;border-radius:6px;background:'+RED+';color:#fff">Trabajo por seguro'+(t.aseg&&t.aseg!=='—'?' · '+t.aseg:'')+(t.sin&&t.sin!=='—'?' · '+t.sin:'')+'</span>'
-    : '<span style="display:inline-block;font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;padding:7px 13px;border-radius:6px;border:1.5px solid '+INK+';color:'+INK+'">Trabajo particular</span>';
-
-  return el('<div style="position:fixed;left:-9999px;top:0;width:794px;background:#fff;color:'+INK+';font-family:Montserrat,Arial,sans-serif;box-sizing:border-box;overflow:hidden">'
-    +'<div style="height:7px;background:'+RED+'"></div>'
-    +'<div style="padding:38px 48px 44px;position:relative">'
-      +'<img src="'+LOGO_WM+'" style="position:absolute;top:57%;left:50%;transform:translate(-50%,-50%);width:58%;pointer-events:none">'
-      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;position:relative">'
-        +'<div style="max-width:56%">'
-          +'<img src="'+LOGO+'" style="height:72px;display:block;margin-bottom:12px">'
-          +contacto
-        +'</div>'
-        +'<div style="text-align:right">'
-          +'<div style="font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:26px;letter-spacing:4px;color:'+RED+';text-transform:uppercase">Presupuesto</div>'
-          +'<table style="margin-top:12px;margin-left:auto;border-collapse:collapse">'
-            +'<tr><td style="font-size:10px;color:'+MUT+';text-transform:uppercase;letter-spacing:1.5px;padding:3px 12px 3px 0;text-align:right">N°</td><td style="font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:15px;color:'+INK+';text-align:right">'+nro+'</td></tr>'
-            +'<tr><td style="font-size:10px;color:'+MUT+';text-transform:uppercase;letter-spacing:1.5px;padding:3px 12px 3px 0;text-align:right">Fecha</td><td style="font-size:13px;color:'+INK+';text-align:right">'+t.ingreso+'/2026</td></tr>'
-            +'<tr><td style="font-size:10px;color:'+MUT+';text-transform:uppercase;letter-spacing:1.5px;padding:3px 12px 3px 0;text-align:right">Validez</td><td style="font-size:13px;color:'+INK+';text-align:right">'+(t.validez||15)+' días</td></tr>'
-          +'</table>'
-        +'</div>'
+  const nro=t.nro||('P-2026-'+String(40+(parseInt((t.id||'').slice(0,6),16)||0)%9000).padStart(4,'0'));
+  const INK='#1a1a1a', MUT='#666', LINE='#cfcfcf', SOFT='#efefef';
+  // detalle / observaciones / repuestos: texto libre guardado en el trabajo
+  const detalle=(t.detalleTxt||(t.items&&t.items.length?t.items.map(i=>i.concepto).join('\n'):'')||'').replace(/\n/g,'<br>');
+  const obs=(t.notas||'').replace(/\n/g,'<br>');
+  const rep=(t.repuestos||'').replace(/\n/g,'<br>');
+  const fecha=t.fecha||t.ingreso||'';
+  const row=(k,val)=>`<tr>
+    <td style="border:1px solid ${LINE};background:${SOFT};padding:9px 12px;font-size:12.5px;color:${INK};width:38%">${k}</td>
+    <td style="border:1px solid ${LINE};padding:9px 12px;font-size:12.5px;color:${INK}">${val||''}</td></tr>`;
+  return el('<div style="position:fixed;left:-9999px;top:0;width:794px;background:#fff;color:'+INK+';font-family:Arial,Helvetica,sans-serif;box-sizing:border-box;padding:34px 40px 40px">'
+    +'<div style="background:#111;color:#fff;text-align:center;padding:12px;border-radius:4px;font-weight:bold;font-size:22px;letter-spacing:8px">PRESUPUESTO</div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-top:22px">'
+      +'<div style="font-size:12.5px;line-height:1.8;color:'+INK+'">'
+        +'<div style="font-weight:bold">Claudio Galiano Estética Vehicular</div>'
+        +'<div>Teléfonos: '+TALLER.tel+'</div>'
+        +'<div>Dirección: '+TALLER.dir+'</div>'
+        +'<div>E-Mail: '+TALLER.email+'</div>'
+        +(TALLER.ig?'<div>Instagram: '+TALLER.ig+'</div>':'')
       +'</div>'
-      +'<div style="height:2px;background:'+INK+';margin:20px 0 24px;position:relative"></div>'
-      +'<div style="display:flex;gap:26px;position:relative">'
-        +'<div style="flex:1">'
-          +'<div style="font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:10px;letter-spacing:2px;color:'+MUT+';text-transform:uppercase;margin-bottom:7px">Cliente</div>'
-          +'<div style="font-size:16px;font-weight:600">'+c.nombre+'</div>'
-          +((c.tel&&c.tel!=='—')?'<div style="font-size:12px;color:'+MUT+';margin-top:3px">'+c.tel+'</div>':'')
-        +'</div>'
-        +'<div style="flex:1">'
-          +'<div style="font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:10px;letter-spacing:2px;color:'+MUT+';text-transform:uppercase;margin-bottom:7px">Vehículo</div>'
-          +'<div style="font-size:16px;font-weight:600">'+v.marca+' '+v.modelo+(v.anio?' ('+v.anio+')':'')+'</div>'
-          +(v.color?'<div style="font-size:12px;color:'+MUT+';margin:3px 0 10px">'+v.color+'</div>':'<div style="height:10px"></div>')
-          +(v.pat?plateHTMLlight(v):'')
-        +'</div>'
-      +'</div>'
-      +'<div style="margin:26px 0 6px;position:relative">'+tipoChip+'</div>'
-      +'<table style="width:100%;border-collapse:collapse;margin-top:10px;position:relative">'
-        +'<thead><tr>'
-          +'<th style="text-align:left;padding:9px 6px;border-bottom:2px solid '+INK+';font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:'+INK+'">Detalle</th>'
-          +'<th style="text-align:right;padding:9px 6px;border-bottom:2px solid '+INK+';font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:'+INK+'">Importe</th>'
-        +'</tr></thead>'
-        +'<tbody>'+rows+'</tbody>'
-        +'<tfoot>'+totalBlock+'</tfoot>'
-      +'</table>'
-      +(t.notas?'<div style="margin-top:24px;position:relative"><div style="font-family:Rajdhani,Arial,sans-serif;font-weight:700;font-size:10px;letter-spacing:2px;color:'+MUT+';text-transform:uppercase;margin-bottom:5px">Observaciones</div><div style="font-size:12.5px;color:'+INK+';line-height:1.55">'+t.notas+'</div></div>':'')
-      +'<div style="margin-top:42px;padding-top:16px;border-top:1px solid '+LINE+';display:flex;justify-content:space-between;align-items:flex-end;position:relative">'
-        +'<div style="font-size:11px;color:'+MUT+';line-height:1.7">Presupuesto válido por '+(t.validez||15)+' días.<br>Sujeto a revisión del vehículo en el taller.<br><b style="color:'+INK+'">Claudio Galiano · Estética Vehicular</b></div>'
-        +'<div style="text-align:center"><div style="width:190px;border-top:1px solid '+INK+';margin-bottom:6px"></div><div style="font-size:11px;color:'+MUT+'">Firma y aclaración</div></div>'
-      +'</div>'
+      +'<img src="'+LOGO+'" style="height:88px;display:block">'
     +'</div>'
+    +'<table style="width:100%;border-collapse:collapse;margin-top:26px">'
+      +row('Fecha', fecha)
+      +row('Nombre', c.nombre)
+      +row('Dirección', c.dir||'')
+      +row('Teléfono', (c.tel&&c.tel!=='—')?c.tel:'')
+      +row('Vehículo', ((v.marca||'')+' '+(v.modelo||'')).trim())
+      +row('Patente', v.pat||'')
+    +'</table>'
+    +'<table style="width:100%;border-collapse:collapse;margin-top:26px;table-layout:fixed">'
+      +'<thead><tr>'
+        +'<th style="border:1px solid '+LINE+';background:'+SOFT+';padding:9px;font-size:12.5px;color:'+INK+';width:40%">Detalle</th>'
+        +'<th style="border:1px solid '+LINE+';background:'+SOFT+';padding:9px;font-size:12.5px;color:'+INK+';width:30%">Observación</th>'
+        +'<th style="border:1px solid '+LINE+';background:'+SOFT+';padding:9px;font-size:12.5px;color:'+INK+';width:30%">Repuestos</th>'
+      +'</tr></thead>'
+      +'<tbody><tr style="vertical-align:top">'
+        +'<td style="border:1px solid '+LINE+';padding:12px;font-size:12px;color:'+INK+';height:150px;line-height:1.5;word-wrap:break-word">'+detalle+'</td>'
+        +'<td style="border:1px solid '+LINE+';padding:12px;font-size:12px;color:'+INK+';line-height:1.5;word-wrap:break-word">'+obs+'</td>'
+        +'<td style="border:1px solid '+LINE+';padding:12px;font-size:12px;color:'+INK+';line-height:1.5;word-wrap:break-word">'+rep+'</td>'
+      +'</tr></tbody>'
+    +'</table>'
+    +'<div style="display:flex;justify-content:flex-end;margin-top:24px">'
+      +'<table style="border-collapse:collapse;width:320px">'
+        +'<tr><td style="border:1px solid '+LINE+';background:'+SOFT+';padding:9px 12px;font-size:12.5px;color:'+INK+';width:50%">Forma de Pago</td>'
+        +'<td style="border:1px solid '+LINE+';padding:9px 12px;font-size:12.5px;color:'+INK+'">'+(t.formaPago||'')+'</td></tr>'
+        +'<tr><td style="border:1px solid '+LINE+';background:'+SOFT+';padding:9px 12px;font-size:13px;color:'+INK+';font-weight:bold">Total</td>'
+        +'<td style="border:1px solid '+LINE+';padding:9px 12px;font-size:15px;color:'+INK+';font-weight:bold">$ '+Math.round(t.total||0).toLocaleString("es-AR")+'</td></tr>'
+      +'</table>'
+    +'</div>'
+    +'<div style="margin-top:30px;font-size:9.5px;color:'+MUT+';line-height:1.5;font-style:italic">'
+      +'Nota: este presupuesto se confeccionó sin desarmar el vehículo. Los imprevistos que puedan surgir al desarmar, serán cotizados posteriormente previa comunicación con el interesado. Este presupuesto tiene como validez un período de '+(t.validez||10)+' días hábiles. El turno es señado con el 30% del valor presupuestado.'
+    +'</div>'
+    +'<div style="background:#333;color:#fff;text-align:center;padding:11px;border-radius:4px;margin-top:26px;font-size:14px">Claudio Galiano Estética Vehicular</div>'
   +'</div>');
 }
 function showGen(msg){const o=el(`<div class="gen-ov" id="genov"><div class="spinner"></div><div class="gt">${msg}</div></div>`);document.body.appendChild(o);return o;}
