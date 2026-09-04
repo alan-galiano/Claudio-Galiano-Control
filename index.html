@@ -464,6 +464,10 @@ async function init(){
 /* ===== DATOS (se cargan desde Supabase al iniciar sesión) ===== */
 let CLIENTES=[], VEHICULOS=[], TRABAJOS=[], MOVS=[], SEGUROS=[];
 
+/* estados del trabajo y sus colores */
+const FLUJO=['Presupuesto','Aprobado','En chapa','En cabina','Terminado','Entregado'];
+const EST_COLOR={'Presupuesto':'var(--txt-3)','Aprobado':'var(--blue)','En chapa':'var(--amber)','En cabina':'var(--violet)','Terminado':'var(--teal)','Entregado':'var(--green)'};
+
 /* categorías de gasto (config fija) */
 const CATS=[
   {k:'sueldos',n:'Sueldos',ic:'users',col:'var(--violet)',fijo:true},
@@ -888,10 +892,14 @@ function vCaja(){
       <span class="chev">${svg(IC.chev,2)}</span>
     </div>
 
-    <button class="li tap" id="adding" style="width:100%;text-align:left;margin-top:12px;border-style:dashed;border-color:rgba(55,194,91,.4);background:rgba(55,194,91,.06)">
-      <div class="av" style="color:var(--green);border-color:rgba(55,194,91,.4)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" style="width:20px;height:20px"><path d="M12 5v14M5 12h14"/></svg></div>
-      <div class="main"><div class="t" style="color:var(--green)">Cargar ingreso</div>
-      <div class="d">Cobro, seña o anticipo</div></div></button>
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <button class="li tap" id="adding" style="flex:1;text-align:left;border-style:dashed;border-color:rgba(55,194,91,.4);background:rgba(55,194,91,.06);margin:0">
+        <div class="av" style="color:var(--green);border-color:rgba(55,194,91,.4)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" style="width:18px;height:18px"><path d="M12 5v14M5 12h14"/></svg></div>
+        <div class="main"><div class="t" style="color:var(--green)">Ingreso</div><div class="d">Cobro, seña</div></div></button>
+      <button class="li tap" id="addingg" style="flex:1;text-align:left;border-style:dashed;border-color:rgba(255,46,46,.4);background:rgba(255,46,46,.05);margin:0">
+        <div class="av" style="color:var(--red);border-color:rgba(255,46,46,.4)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" style="width:18px;height:18px"><path d="M12 5v14M5 12h14"/></svg></div>
+        <div class="main"><div class="t" style="color:var(--red)">Gasto</div><div class="d">Egreso</div></div></button>
+    </div>
 
     <div class="chips" style="margin-top:16px">
       <button class="chip on" data-f="todos">Todos</button>
@@ -902,6 +910,7 @@ function vCaja(){
   </div>`);
   d.querySelector('#segnote').onclick=()=>tab('seguros');
   d.querySelector('#adding').onclick=()=>openNuevoIngreso();
+  d.querySelector('#addingg').onclick=()=>openNuevoGasto();
   const cont=d.querySelector('#movs');
   const paint=(f)=>{
     cont.innerHTML='';
@@ -1411,7 +1420,7 @@ function openNuevoPresupuesto(edit){
   m.querySelector('#p-cancel').onclick=closeSheet;
   m.querySelector('#p-save').onclick=async()=>{
     const det=m.querySelector('#p-det').value.trim();
-    if(!det){const f=m.querySelector('#p-det');f.classList.add('bad');f.focus();return;}
+    if(!det){const f=m.querySelector('#p-det');f.classList.add('bad');f.focus();toast('Escribí el detalle del trabajo.');return;}
     const total=parseInt(totalInp.value.replace(/\D/g,''))||0;
     const seguro=m.querySelector('#p-seg').checked;
     const pay={tipo:seguro?'seguro':'particular',titulo:det.split('\n')[0].slice(0,60),total,
